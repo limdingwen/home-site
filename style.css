@@ -1,0 +1,243 @@
+
+
+
+/* Global shared styles */
+
+
+
+@font-face {
+    font-family:			"8-Bit Wonder";
+    src:					url("font.ttf");
+}
+
+body {
+	background-color:		#000000;
+	color:					#00FF00;
+
+	font-family:			"8-Bit Wonder", sans-serif;
+}
+
+header a, nav a {
+	color:					#00FF00;
+	text-decoration:		none;
+}
+
+.pixelated {
+	-ms-interpolation-mode:	nearest-neighbor;
+	image-rendering:		-webkit-optimize-contrast;
+	image-rendering:		-webkit-crisp-edges;
+	image-rendering:		-moz-crisp-edges;
+	image-rendering:		-o-crisp-edges;
+	image-rendering:		pixelated;
+}
+
+.noAnchorDecoration {
+	text-decoration:		none;
+}
+
+.textOnly {
+	display:				none; /*	Used to enhance the experience in text-
+										only browsers.
+										
+										If CSS is not loaded, the site will be
+										hard to use. The textOnly text will
+										help the user navigate the website.
+										
+										If CSS is loaded, the site will be
+										acceptable to use, and the textOnly
+										text will disappear. */
+}
+
+
+
+/* Landing page specific styles */
+
+
+
+#landingContainer {
+	text-align:				center;
+}
+
+#landingLogo {
+	width:					256px;
+	height:					256px;
+}
+
+#landingNav {
+	margin-top:				50px;
+}
+
+.landingNavLink {
+	margin-left:			20px;
+	margin-right:			20px;
+}
+
+
+
+/* General shared styles */
+
+
+
+#generalContainer {
+	max-width:				1024px;
+	
+	background-color:		#000000;
+	
+	margin-left:			auto;
+	margin-right:			auto;
+}
+
+#generalHeader {
+	margin-top:				20px;
+}
+
+#generalLogo {
+	width:					64px;
+	height:					64px;
+	
+	float:					left;
+}
+
+#generalTitle {
+	margin-left:			80px;
+
+	line-height:			64px;
+}
+
+#generalNav {
+	clear:					left;
+	
+	margin-left:			10px;
+}
+
+.generalNavLink {
+	font-size:				12px;
+	
+	margin-right:			20px;
+}
+
+#generalContent {
+	margin-top:				40px;
+	margin-bottom:			40px;
+
+	padding-top:			20px;
+	padding-left:			40px;
+	padding-right:			40px;
+	padding-bottom:			20px;
+
+	background-color:		#EEE7E0;
+}
+
+#generalContent, #generalContent table {
+	font-family:			sans-serif;
+	line-height:			1.2;
+	color:					#232323;
+}
+
+#generalContent table td {
+	padding-top:			10px;
+}
+
+#generalContent h1, #generalContent h2, #generalContent h3, #generalContent h4, #generalContent h5, #generalContent h6 {
+	font-family:			"8-Bit Wonder", sans-serif;
+}
+
+#generalContent h1 {
+	font-size:				32px;
+}
+
+#generalContent h2 {
+	font-size:				24px;
+}
+
+#generalContent h3 {
+	font-size:				21px;
+}
+
+#generalContent h4 {
+	font-size:				18px;
+}
+
+#generalContent h5 {
+	font-size:				16px;
+}
+
+#generalContent h6 {
+	font-size:				14px;
+}
+
+#generalContent iframe {
+	border:					none;
+}
+
+#generalContent img {
+	margin-top:				20px;
+	margin-left:			20px;
+	margin-right:			20px;
+	margin-bottom:			20px;
+}
+
+#generalContent .floatRight {
+	float:					right;
+}
+
+#generalContent .fitWidthImg {
+	margin-left:			0;
+	margin-right:			0;
+
+	width:					100%;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

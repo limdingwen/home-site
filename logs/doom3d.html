@@ -1,0 +1,963 @@
+<!doctype html>
+<html>
+	<head>
+		<title>Creating a Doom-style 3-D Engine in Python -- Hot Metal</title>
+		
+		<meta charset="utf-8">
+		<link rel="stylesheet" href="../style.css">
+		<link rel="icon" href="../favicon.png">
+	</head>
+	<body>
+		<div id="generalContainer">
+			<header id="generalHeader">
+				<a class="noAnchorDecoration" href="../index.html">
+					<img id="generalLogo" class="pixelated" src="../logo.png" alt="Hot Metal site logo">
+					<h1 id="generalTitle">Hot Metal</h1>
+				</a>
+			</header>
+			
+			<nav id="generalNav">
+				<span class="generalNavLink"><a href="../aboutMe.html">About Me</a></span><span class="textOnly"><br></span>
+				<span class="generalNavLink"><a href="../projects.html">Projects</a></span><span class="textOnly"><br></span>
+				<span class="generalNavLink"><a href="../resume.html">Resume</a></span><span class="textOnly"><br></span>
+				<span class="generalNavLink"><a href="../logs.html">Logs</a></span><span class="textOnly"><br></span>
+				<span class="generalNavLink"><a href="../credits.html">Credits</a></span><span class="textOnly"><br></span>
+			</nav>
+			
+			<article id="generalContent">
+				<h1>Creating a Doom-style 3-D Engine in Python</h1>
+				<figure>
+					<a href="../doom3d-finished.png"><img src="../doom3d-finished.png" class="fitWidthImg" alt="The finished product."></a>
+					<figcaption>Figure 1: The final product, with a few modifications.</figcaption>
+				</figure>
+				
+				<p>(Just want the engine? Download the finished engine <a href="../projects/doom3d.html">here</a>.)</p>
+				<p>3-D engines are marvelous applications of math and algorithms. Built for both performance and graphics, they can vary greatly from game to game. For example, Doom's 3-D engine. It's fast, doesn't rely on traditional polygons, and you can't look up or down.</p>
+				<p>In this tutorial we're going to build a Doom-style 3-D engine using Python and Pygame (<code>sudo apt install python-pygame</code>). The engine can only support convex rooms however.</p>
+				<p>First off, the video tutorial by Bisqwit that I used to build this. It covers things like how to solve the convex problem, texture mapping and an implementation in C. Do check it out!</p>
+				<iframe width="560" height="315" src="https://www.youtube.com/embed/HQYsFshbkYw" allowfullscreen></iframe>
+				
+				<h2>The Tutorial</h2>
+				<p>You can follow through this tutorial by copying and pasting code mostly, but I recommend you to type it out yourself and try and hack it. New code will be in <b>bold</b> so you'll know what to type in. At the end will be a full code listing for you to compare.</p>
+
+				<h3>Initializing Pygame and boilerplate</h3>
+				<p>Let's begin by creating a window. We want three screens:</p>
+				<ul>
+					<li>The world doesn't move but the player does (on the left)</li>
+					<li>The player doesn't move but the world does (in the middle)</li>
+					<li>The actual 3-D view (on the right)</li>
+				</ul>
+				<p>Each of these screens has the dimension 400x400, and laying the three side-by-side means that the actual window is 1200x400 in size (since 400 * 3 = 1200). Let's define them:</p>
+				<pre><code><b>
+import pygame
+
+SCREEN_WIDTH = 400
+SCREEN_HEIGHT = 400
+
+WIDTH = SCREEN_WIDTH * 3
+HEIGHT = SCREEN_HEIGHT
+				</b></code></pre>
+				<p>You can change the <code>SCREEN_WIDTH</code> and <code>SCREEN_HEIGHT</code> constants if your screen is too small or big. Next, initialize Pygame and create a window:</p>
+				<pre><code><b>
+pygame.init()
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+				</b></code></pre>
+				<p>If you run the program now, you would see a long window quickly appear and disappear. Success! Now we just got to add in the main loop and we'll be set:</p>
+				<pre><code><b>
+running = True
+while running:
+	for event in pygame.event.get():
+		if event.type == pygame.QUIT:
+			running = False
+				</b></code></pre>
+
+				<h3>The Coordinate System</h3>
+				<p>Now before we go any further, let's discuss coordinates. In this example, one screen is 400 x 400 pixels (or <code>SCREEN_WIDTH</code> x <code>SCREEN_HEIGHT</code> pixels) large. How are we going to represent 3-D coordinates on this? With maths, of course!</p>
+				<figure>
+					<a href="../doom3d-coordinates.png"><img src="../doom3d-coordinates.png" alt="The coordinates system illustrated."></a>
+					<figcaption>Figure 2: The mathematical coordinates system of a single screen.</figcaption>
+				</figure>
+				<p>The player would start off at the coordinates (0, 0), looking north with a rotation of 0. Increasing the rotation will make him rotate clockwise.</p>
+				<p>Now, let's add a function to help convert math coordinates into screen coordinates (returns a tuple):</p>
+				<pre><code>
+import pygame
+
+<b>def screen_coords(x, y):
+	return ((x / 2 + 0.5) * SCREEN_WIDTH, (-y / 2 + 0.5) * SCREEN_HEIGHT)</b>
+
+SCREEN_WIDTH = 400
+SCREEN_HEIGHT = 400
+
+WIDTH = SCREEN_WIDTH * 3
+HEIGHT = SCREEN_HEIGHT
+				</code></pre>
+				<p>If you pass in the x value 0.5, it'll divide it by 2 and add 0.5 to get 0.75. This is because the screen is 2 math-units wide (remember, -1 to +1) and 0 is on the center. Then, it'll multiply it by the screen width to get 300px. The same thing happens to the y value, but it flips it vertically first.</p>
+				<p>Now, a function to convert degrees to radians, because Python uses radians for calculation but we're using degrees because it's easier.</p>
+				<pre><code>
+import pygame
+<b>import math</b>
+
+def screen_coords(x, y):
+	return ((x / 2 + 0.5) * SCREEN_WIDTH, (-y / 2 + 0.5) * SCREEN_HEIGHT)
+
+<b>def rad(degrees):
+	return degrees / 180 * math.pi</b>
+				</code></pre>
+
+				<h3>The First Screen: Building The World</h3>
+				<p>The first screen is the one where the world doesn't move but the player does. Let's define a single wall (remember the math coordinates!):</p>
+				<pre><code>
+WIDTH = SCREEN_WIDTH * 3
+HEIGHT = SCREEN_HEIGHT
+
+<b>WALL = ((-0.5, 0.5), (0.5, 0.5))</b>
+
+pygame.init()
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+				</code></pre>
+				<p>Next, we're going to fill in the main loop to render the wall (as a line) into a surface named <code>split_screen</code>, then blit <code>split_screen</code> onto the window, then update the window to make it show up on the computer monitor.</p>
+				<pre><code>
+running = True
+while running:
+	for event in pygame.event.get():
+		if event.type == pygame.QUIT:
+			running = False
+
+<b>	split_screen = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+
+	split_screen.fill((0, 0, 0))
+	
+	pygame.draw.line(split_screen, (255, 255, 255),
+		screen_coords(WALL[0][0], WALL[0][1]),
+		screen_coords(WALL[1][0], WALL[1][1]), 1)
+	
+	screen.blit(split_screen, (0, 0))
+	pygame.display.update()</b>
+				</code></pre>
+				<p>The reason why we're rendering to a surface named <code>split_screen</code> instead of rendering directly to the window is because we're making three seperate screens here, and we don't want the pixels leaking from one view to another. We can also not worry about the positions of the multiple screens until we blit the entire screen to the window.</p>
+				<p>Next, we're going to draw the player. First, we add the player variables:</p>
+				<pre><code>
+WALL = ((-0.5, 0.5), (0.5, 0.5))
+
+<b>px = 0.0 # Player X
+py = 0.0 # Player Y
+prot = 0.0 # Player rotation</b>
+
+pygame.init()
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+				</code></pre>
+				<p>Next, we add the code to draw the player's current position and rotation (specifically, the direction he's viewing) into the main loop:</p>
+				<pre><code>
+	pygame.draw.line(split_screen, (255, 255, 255),
+		screen_coords(WALL[0][0], WALL[0][1]),
+		screen_coords(WALL[1][0], WALL[1][1]), 1)
+
+	<b># Draw player
+
+	pygame.draw.line(split_screen, (255, 0, 0),
+		screen_coords(px, py),
+		screen_coords(
+			px + math.sin(rad(prot)) * 0.1,
+			py + math.cos(rad(prot)) * 0.1), 1)
+	pygame.draw.line(split_screen, (0, 255, 0),
+		screen_coords(px, py),
+		screen_coords(px, py), 1)</b>
+				</code></pre>
+				<p>Who said you wouldn't need math to make games? Anyway, what's happening here is that we're first drawing the directional ray coming out from the player "dot", and then we draw the player "dot" (so the dot will be drawn on top of the ray).</p>
+				<figure>
+					<a href="../doom3d-trigo.png"><img src="../doom3d-trigo.png" alt="Trigonometry diagram."></a>
+					<figcaption>Figure 3: The trigonometry used to calculate the ray coordinates.</figcaption>
+				</figure>
+				<p>Drawing the ray requires a bit of trigonometry. <code>sin(0) = 0, sin(90) = 1</code> and <code>cos(0) = 1, cos(90) = 0</code>, so intuitively, we know that we should use sin for calculate the X offset of the ray and cos would be used to calculate the Y offset. That's the best I can explain it, sorry... but hey, it works!</p>
+				<p>The second draw is to draw the player's dot, simple. Okay, enough math! Let's run this thing!</p>
+				<figure>
+					<a href="../doom3d-first.png"><img src="../doom3d-first.png" class="fitWidthImg" alt="The first screen done."></a>
+					<figcaption>Figure 4: The first screen, finished.</figcaption>
+				</figure>
+				<p>Good enough. Let's now add movement so we can see the math in action. Let's add rotation using the left and right arrow keys, and movement using the up and down arrow keys:</p>
+				<pre><code>
+running = True
+while running:
+	for event in pygame.event.get():
+		if event.type == pygame.QUIT:
+			running = False
+
+	<b>keys = pygame.key.get_pressed()
+
+	if keys[pygame.K_LEFT]:
+		prot -= 3
+	if keys[pygame.K_RIGHT]:
+		prot += 3
+	
+	if keys[pygame.K_UP]:
+		px += math.sin(rad(prot)) * 0.01
+		py += math.cos(rad(prot)) * 0.01
+	if keys[pygame.K_DOWN]:
+		px -= math.sin(rad(prot)) * 0.01
+		py -= math.cos(rad(prot)) * 0.01</b>
+
+	split_screen = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+
+	split_screen.fill((0, 0, 0))
+	
+	pygame.draw.line(split_screen, (255, 255, 255),
+		screen_coords(WALL[0][0], WALL[0][1]),
+		screen_coords(WALL[1][0], WALL[1][1]), 1)
+				</code></pre>
+				<p>Notice that the forward-backwards movement uses trigonometry, too, since you have to move in the direction where the player is looking at, not just <code>y += 0.01</code>. Oh, and that 0.01 means speed, in math coordinates. I apologise if that isn't obvious. You may change that if you feel the movement is too fast or slow.</p>
+				<figure>
+					<a href="../doom3d-movement.png"><img src="../doom3d-movement.png" class="fitWidthImg" alt="Movement achieved."></a>
+					<figcaption>Figure 5: The first screen with movement.</figcaption>
+				</figure>
+				<h3>Intermission: Cleaning up</h3>
+				<p>Take a breather. The code's getting kinda messy now, so I'll add some comments and constants to prepare for the more complex code later on. Here's the full cleaned-up listing of the code for you to digest:</p>
+				<pre><code>
+import pygame
+import math
+
+<b># Converts math coordinates to screen coordinates</b>
+
+def screen_coords(x, y):
+	return ((x / 2 + 0.5) * SCREEN_WIDTH, (-y / 2 + 0.5) * SCREEN_HEIGHT)
+
+<b># Converts degrees to radians</b>
+
+def rad(degrees):
+	return degrees / 180 * math.pi
+
+<b># Screen and window dimensions</b>
+
+SCREEN_WIDTH = 400 <b># For each screen</b>
+SCREEN_HEIGHT = 400
+
+WIDTH = SCREEN_WIDTH * 3 <b># For the entire window (3 screens total, side-by-side)</b>
+HEIGHT = SCREEN_HEIGHT
+
+<b># Colors
+
+BACKGROUND_COLOR = (0, 0, 0)
+PLAYER_COLOR = (0, 255, 0)
+PLAYER_RAY_COLOR = (255, 0, 0)
+WALL_COLOR = (255, 255, 255)
+
+# The wall</b>
+
+WALL = ((-0.5, 0.5), (0.5, 0.5))
+
+<b># Player speeds
+
+PLAYER_SPEED = 0.01 # Movement speed in math coordinates
+PLAYER_ROT_SPEED = 3 # Rotation speed in degrees
+
+# Player ray length
+
+PLAYER_RAY_LENGTH = 0.1
+
+# Player variables</b>
+
+px = 0.0 # Player X
+py = 0.0 # Player Y
+prot = 0.0 # Player rotation
+
+<b># Initialize Pygame and create window</b>
+
+pygame.init()
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+
+<b># Main loop</b>
+
+running = True
+while running:
+	for event in pygame.event.get():
+		if event.type == pygame.QUIT:
+			running = False
+	
+	<b># Handle movement through user input</b>
+
+	keys = pygame.key.get_pressed()
+
+	if keys[pygame.K_LEFT]:
+		prot -= <b>PLAYER_ROT_SPEED</b>
+	if keys[pygame.K_RIGHT]:
+		prot += <b>PLAYER_ROT_SPEED</b>
+	
+	if keys[pygame.K_UP]:
+		px += math.sin(rad(prot)) * <b>PLAYER_SPEED</b>
+		py += math.cos(rad(prot)) * <b>PLAYER_SPEED</b>
+	if keys[pygame.K_DOWN]:
+		px -= math.sin(rad(prot)) * <b>PLAYER_SPEED</b>
+		py -= math.cos(rad(prot)) * <b>PLAYER_SPEED</b>
+
+	<b># Prepare screen</b>
+
+	split_screen = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+
+	<b># Clear screen</b>
+
+	split_screen.fill(<b>BACKGROUND_COLOR</b>)
+	
+	<b># Draw wall</b>
+	
+	pygame.draw.line(split_screen, <b>WALL_COLOR</b>,
+		screen_coords(WALL[0][0], WALL[0][1]),
+		screen_coords(WALL[1][0], WALL[1][1]), 1)
+
+	# Draw player
+
+	pygame.draw.line(split_screen, <b>PLAYER_RAY_COLOR</b>,
+		screen_coords(px, py),
+		screen_coords(
+			px + math.sin(rad(prot)) * <b>PLAYER_RAY_LENGTH</b>,
+			py + math.cos(rad(prot)) * <b>PLAYER_RAY_LENGTH</b>), 1)
+	pygame.draw.line(split_screen, <b>PLAYER_COLOR</b>,
+		screen_coords(px, py),
+		screen_coords(px, py), 1)
+	
+	<b># Blit screen onto window for a split-screen effect</b>
+
+	screen.blit(split_screen, (0, 0))
+
+	<b># Update screen</b>
+
+	pygame.display.update()
+				</code></pre>
+				
+				<h3>The Second Screen: Moving The World</h3>
+				<p>In order to make a first-person engine, you must understand that the camera is completely stationary (because the math will get really hard otherwise). So how should we move the player? By moving the world, of course! For example, if the player moves forwards, he doesn't; the world moves backwards instead.</p>
+				<p>But wait! In our current code, isn't the world completely stationary? And the player (<code>px and py</code>) is the one moving? Well, yes, but the 3-D calculation is dependent on the player being at (0, 0). So, we're going to make it such that the player is exactly at (0, 0), with a rotation of 0. The player variables are just there to calculate the world's coordinates from the perspective of the player. (We're not actually going to modify <code>WALL</code>. It's a calculation that happens every frame.)</p>
+				<p>Alright, enough talk. Let's set up the second view:</p>
+				<pre><code>
+	# Prepare screen
+
+	split_screen = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+
+	<b>###########################################################################
+	# SCREEN 1</b>
+
+	# Clear screen
+
+	split_screen.fill(BACKGROUND_COLOR)
+	
+	<i>(Snipped for brevity)</i>
+
+	# Blit screen onto window for a split-screen effect
+
+	screen.blit(split_screen, (0, 0))
+
+	<b>###########################################################################
+	# SCREEN 2
+
+	# Clear screen
+
+	split_screen.fill(BACKGROUND_COLOR)
+
+	# Get real wall coordinates
+
+	x1 = WALL[0][0]
+	y1 = WALL[0][1]
+	x2 = WALL[1][0]
+	y2 = WALL[1][1]
+
+	# Calculate wall coordinates from player's perspective
+	# (TODO, right now we're just using the real wall coordinates)
+
+	# Draw wall
+
+	pygame.draw.line(split_screen, WALL_COLOR,
+		screen_coords(x1, y1),
+		screen_coords(x2, y2), 1)
+
+	# Draw player
+
+	pygame.draw.line(split_screen, PLAYER_RAY_COLOR,
+		screen_coords(0, 0),
+		screen_coords(0, PLAYER_RAY_LENGTH), 1)
+	pygame.draw.line(split_screen, PLAYER_COLOR,
+		screen_coords(0, 0),
+		screen_coords(0, 0), 1)
+
+	# Blit screen onto window for a split-screen effect
+
+	screen.blit(split_screen, (SCREEN_WIDTH, 0))</b>
+
+	# Update screen
+
+	pygame.display.update()
+				</code></pre>
+				<p>Note how the player is rendered completely stationary at (0, 0), always looking towards north. If you run the program now, you'll realize that the second screen doesn't change at all when you move, which is correct, because we haven't added the code to move the world.</p>
+				<p>We'll want to start by moving the world based on the player position. After that, we can rotate the world around the player based on rotation.</p>
+				<p>Here's the code for moving the world based on the player position:</p>
+				<pre><code>
+	# Get real wall coordinates
+
+	x1 = WALL[0][0]
+	y1 = WALL[0][1]
+	x2 = WALL[1][0]
+	y2 = WALL[1][1]
+
+	<b># Calculate wall coordinates from player's perspective (POSITION)
+
+	px1 = x1 - px # Wall coordinate X - player coordinate X
+	py1 = y1 - py # Wall coordinate Y - player coordinate Y
+	px2 = x2 - px # Same for the other wall coordinates.
+	py2 = y2 - py</b>
+
+	# Draw wall
+
+	pygame.draw.line(split_screen, WALL_COLOR,
+		screen_coords(<b>px1, py1</b>),
+		screen_coords(<b>px2, py2</b>), 1)
+				</code></pre>
+				<p>Running the code, you can see how the world moves around the player, in the style of a first-person view. Now, to make the world rotate. (The world really does revolve around you!)</p>
+				<p>You'll need some matrix math for this. Here's the <a href="https://www.willamette.edu/~gorr/classes/GeneralGraphics/Transforms/transforms2d.htm">transformation matrix</a> for a 2-D counter-clockwise (when rotation increases, the player rotates right, so the world rotates <i>left</i>) rotation around the origin (0,0):</p>
+				<pre><code>
+[ cos(rot), -sin(rot) ]
+[ sin(rot), cos(rot)  ]
+				</code></pre>
+				<p>In transformation matrices, you multiply the transformation matrice by the position matrice, which in this case, is the coordinates for the wall. So our formula becomes (where rx1, ry1 etc are the rotated wall coordinates):</p>
+				<pre><code>
+[ cos(rot), -sin(rot) ] * [ px1, px2 ] = [ rx1, rx2 ]
+[ sin(rot), cos(rot)  ]   [ py1, py2 ]   [ ry1, ry2 ]
+
+rx1 = cos(rot) * px1 - sin(rot) * py1
+ry1 = sin(rot) * px1 + cos(rot) * py1
+rx2 = cos(rot) * px2 - sin(rot) * py2
+ry2 = sin(rot) * px2 + cos(rot) * py2
+				</code></pre>
+				<p>We can implement that quite easily in code (don't forget to convert the player rotation to radians!):</p>
+				<pre><code>
+	# Calculate wall coordinates from player's perspective (POSITION)
+
+	px1 = x1 - px # Wall coordinate X - player coordinate X
+	py1 = y1 - py # Wall coordinate Y - player coordinate Y
+	px2 = x2 - px # Same for the other wall coordinates.
+	py2 = y2 - py
+
+	<b># Calculate wall coordinates from player's perspective (ROTATION)
+
+	rx1 = math.cos(rad(prot)) * px1 - math.sin(rad(prot)) * py1
+	ry1 = math.sin(rad(prot)) * px1 + math.cos(rad(prot)) * py1
+	rx2 = math.cos(rad(prot)) * px2 - math.sin(rad(prot)) * py2
+	ry2 = math.sin(rad(prot)) * px2 + math.cos(rad(prot)) * py2</b>
+
+	# Draw wall
+
+	pygame.draw.line(split_screen, WALL_COLOR,
+		screen_coords(<b>rx1, ry1</b>),
+		screen_coords(<b>rx2, ry2</b>), 1)
+				</code></pre>
+				<p>And running the code, it should work! Congrats! Once you are finished with this, let's move on to the real deal: 3-D.</p>
+				<figure>
+					<a href="../doom3d-rotation.png"><img src="../doom3d-rotation.png" class="fitWidthImg" alt="Rotation working."></a>
+					<figcaption>Figure 6: The second screen, finished.</figcaption>
+				</figure>
+
+				<h3>The Third Screen: Let There Be Light</h3>
+				<p>First things first. Let's set up the third screen.</p>
+				<pre><code>
+	# Blit screen onto window for a split-screen effect
+
+	screen.blit(split_screen, (SCREEN_WIDTH, 0))
+	
+	<b>###########################################################################
+	# SCREEN 3
+	
+	# Clear screen
+
+	split_screen.fill(BACKGROUND_COLOR)
+
+	# Blit screen onto window for a split-screen effect
+
+	screen.blit(split_screen, (SCREEN_WIDTH * 2, 0))</b>
+
+	# Update screen
+
+	pygame.display.update()
+				</code></pre>
+				<p>We're going to use the variables that we calculated in the second screen for this.</p>
+				<p>So... right now, we have the coordinates of the wall seen from the perspective of a non-moving player. (I'm going to call this <b>relative coordinates</b> from now on.) Using that to make 3-D would include tons of matrices, weird calculations and trigonometry, right?</p>
+				<figure>
+					<a href="../doom3d-coordinates-3d.png"><img src="../doom3d-coordinates-3d.png" alt="Coordinates, now in 3-D!"></a>
+					<figcaption>Figure 7: The 3-D mathematical coordinates system in a single screen, with the player dot and ray for perspective.</figcaption>
+				</figure>
+				<p>Nah. It's actually one of the easiest calculations. Just divide the x and z relative coordinates by the y relative coordinate. Wait... a z-coordinate? Yep, that's where the wall height comes in:</p>
+				<pre><code>
+# The wall
+
+WALL = ((-0.5, 0.5), (0.5, 0.5))
+<b>WALL_HEIGHT = 0.25</b>
+				</code></pre>
+				<p>And we can do our calculations and draw the wall:</p>
+				<pre><code>
+	# Clear screen
+
+	split_screen.fill(BACKGROUND_COLOR)
+
+	<b># Calculate 3-D wall coordinates as seen on the screen
+	
+	zx1 = rx1          / ry1
+	zu1 = WALL_HEIGHT  / ry1 # Upper Z coordinate
+	zl1 = -WALL_HEIGHT / ry1 # Lower Z coordinate
+	zx2 = rx2          / ry2
+	zu2 = WALL_HEIGHT  / ry2 # Upper Z coordinate
+	zl2 = -WALL_HEIGHT / ry2 # Lower Z coordinate
+
+	# Draw wall
+	
+	pygame.draw.polygon(split_screen, WALL_COLOR, [
+		screen_coords(zx1, zl1),
+		screen_coords(zx1, zu1),
+		screen_coords(zx2, zu2),
+		screen_coords(zx2, zl2)], 1)</b>
+	
+	# Blit screen onto window for a split-screen effect
+
+	screen.blit(split_screen, (SCREEN_WIDTH * 2, 0))
+				</code></pre>
+				<p>Is 3-D really that easy...? Let's run the code!</p>
+				<figure>
+					<a href="../doom3d-3d.png"><img src="../doom3d-3d.png" class="fitWidthImg" alt="3-D working."></a>
+					<figcaption>Figure 8: The first 3-D image displayed.</figcaption>
+				</figure>
+				<p>Ayyyy! It works! It's alive! Wait...</p>
+				<figure>
+					<a href="../doom3d-issue-behind.png"><img src="../doom3d-issue-behind.png" class="fitWidthImg" alt="3-D not working: Wall behind the player is rendered."></a>
+					<figcaption>Figure 9: The first issue, when both points are behind the player.</figcaption>
+				</figure>
+				<p>That's easy enough to fix, just check if the wall is behind the player and not render it-</p>
+				<figure>
+					<a href="../doom3d-issue-bowtie.png"><img src="../doom3d-issue-bowtie.png" class="fitWidthImg" alt="3-D not working: Wall partially behind the player is rendered wrongly."></a>
+					<figcaption>Figure 10: The second issue, when only one point is behind the player.</figcaption>
+				</figure>
+				<p>Wait whaaaaaaaat.</p>
+				<p>Alright, let's solve both problems one by one. The first one should be easy; just don't render the wall if both of its points is behind the player, in other words, both of its relative Y coordinates is less than or equals to 0. This also gives you additional performance, since you wouldn't need to render walls that are behind you.</p>
+				<p>We can solve this by a simple if block:</p>
+				<pre><code>
+	# Clear screen
+
+	split_screen.fill(BACKGROUND_COLOR)
+
+	<b># If the wall is completely behind us, don't render it
+
+	if ry1 > 0 or ry2 > 0:
+
+		# Calculate 3-D wall coordinates as seen on the screen
+		
+		zx1 = rx1          / ry1
+		zu1 = WALL_HEIGHT  / ry1 # Upper Z coordinate
+		zl1 = -WALL_HEIGHT / ry1 # Lower Z coordinate
+		zx2 = rx2          / ry2
+		zu2 = WALL_HEIGHT  / ry2 # Upper Z coordinate
+		zl2 = -WALL_HEIGHT / ry2 # Lower Z coordinate
+
+		# Draw wall
+		
+		pygame.draw.polygon(split_screen, WALL_COLOR, [
+			screen_coords(zx1, zl1),
+			screen_coords(zx1, zu1),
+			screen_coords(zx2, zu2),
+			screen_coords(zx2, zl2)], 1)</b>
+	
+	# Blit screen onto window for a split-screen effect
+
+	screen.blit(split_screen, (SCREEN_WIDTH * 2, 0))
+				</code></pre>
+				<p>Now, the second problem happens when one of the two points of the wall is behind the player. (Technically also happens when both are behind the player, but we took care of that already so we don't need to care.) It happens because when the point is behind the player, the relative Y-coordinate is negative, which results in negative <code>zx1</code>, <code>zu1</code> and <code>zl1</code> values. Because <code>zu1</code> and <code>zl1</code> are flipped vertically by getting divided by a negative number, you see that weird bowtie effect. <code>zx1</code> is flipped horizontally as well, which is why the wall seems to be rendered on the right side instead of the left in the image above.</p>
+				<p>So how do we solve this? Simple, though it might not look simple at first. Consider this math problem:</p>
+				<figure>
+					<a href="../doom3d-mathproblem.png"><img src="../doom3d-mathproblem.png" alt="A math problem, where a line intersects the X-axis. It passes through points A and C, and B lies where it intersects with the X-axis."></a>
+					<figcaption>Figure 11: The illustration of a possible solution.</figcaption>
+				</figure>
+				<p>The wall's two points are A and C, where C is the point behind the player. What if we could draw a line from A to B instead of A to C?</p>
+				<p>Time to whip out the pen and paper, 'cause math class is back in session!</p>
+				<pre><code>
+The line AC:
+y = mx + c
+
+(Ay means the y-coordinate of point A, etc)
+
+m = (Cy - Ay) / (Cx - Ax)
+y = x(Cy - Ay) / (Cx - Ax) + c
+Ay = Ax(Cy - Ay) / (Cx - Ax) + c
+Ay - c = Ax(Cy - Ay) / (Cx - Ax)
+c = Ay - Ax(Cy - Ay) / (Cx - Ax)
+
+y = x(Cy - Ay) / (Cx - Ax) + Ay - Ax(Cy - Ay) / (Cx - Ax)
+0 = (Bx(Cy - Ay) - Ax(Cy - Ay)) / (Cx - Ax) + Ay
+0 = ((Bx - Ax)(Cy - Ay)) / (Cx - Ax) + Ay
+((Ax - Bx)(Cy - Ay)) / (Cx - Ax) = Ay
+Ax - Bx = Ay(Cx - Ax) / (Cy - Ay)
+-Bx = Ay(Cx - Ax) / (Cy - Ay) - Ax
+Bx = Ax - Ay(Cx - Ax) / (Cy - Ay)
+
+Bx = (Ax(Cy - Ay) - Ay(Cx - Ax)) / (Cy - Ay)
+Bx = (AxCy - AxAy - AyCx + AyAx) / (Cy - Ay)
+Bx = (AxCy - AyCx) / (Cy - Ay)
+				</code></pre>
+				<p>(That took me like 5 hours to do, I'm bad at math.) Now let's implement it:</p>
+				<pre><code>
+	# If the wall is completely behind us, don't render it
+
+	if ry1 > 0 or ry2 > 0:
+
+		<b># Clip wall that is partially behind us
+
+		if ry1 &lt;= 0 or ry2 &lt;= 0:
+			
+			# Calculate where the wall intersects the X axis
+
+			ix = (rx1 * ry2 - ry1 * rx2) / (ry2 - ry1)
+
+			# Change the coordinates of C into B (as per the math problem)
+			# so that the engine renders AB instead of AC, avoiding the problem
+
+			if ry1 &lt;= 0:
+				rx1 = ix
+				ry1 = 0.01
+			if ry2 &lt;= 0:
+				rx2 = ix
+				ry2 = 0.01</b>
+		
+		# Calculate 3-D wall coordinates as seen on the screen
+		
+		zx1 = rx1          / ry1
+		zu1 = WALL_HEIGHT  / ry1 # Upper Z coordinate
+		zl1 = -WALL_HEIGHT / ry1 # Lower Z coordinate
+		zx2 = rx2          / ry2
+		zu2 = WALL_HEIGHT  / ry2 # Upper Z coordinate
+		zl2 = -WALL_HEIGHT / ry2 # Lower Z coordinate
+				</code></pre>
+				<p>Ideally <code>ry1</code> or <code>ry2</code> would be 0, but then that will result in a division by 0 error. So put in a low number like 0.01 instead. Run it:</p> 
+				<figure>
+					<a href="../doom3d-solved.png"><img src="../doom3d-solved.png" class="fitWidthImg" alt="Problem solved!"></a>
+					<figcaption>Figure 12: The fixed 3-D image.</figcaption>
+				</figure>
+				<p>Perfect! If you moved the clipping code over to the second screen's calculations, you could see in the second screen how nothing behind the player is being rendered.</p>
+				<p>We're almost done here.</p>
+
+				<h3>Finishing Touches</h3>
+				<p>The 3-D wall would probably be better as a solid polygon instead of wireframe:</p>
+				<pre><code>
+		# Calculate 3-D wall coordinates as seen on the screen
+		
+		zx1 = rx1          / ry1
+		zu1 = WALL_HEIGHT  / ry1 # Upper Z coordinate
+		zl1 = -WALL_HEIGHT / ry1 # Lower Z coordinate
+		zx2 = rx2          / ry2
+		zu2 = WALL_HEIGHT  / ry2 # Upper Z coordinate
+		zl2 = -WALL_HEIGHT / ry2 # Lower Z coordinate
+
+		# Draw wall
+		
+		pygame.draw.polygon(split_screen, WALL_COLOR, [
+			screen_coords(zx1, zl1),
+			screen_coords(zx1, zu1),
+			screen_coords(zx2, zu2),
+			screen_coords(zx2, zl2)], <b>0</b>)
+				</code></pre>
+				<p>You'll need a ceiling/sky and a floor too; your wall shouldn't just exist in a vacuum! This is surprisingly easy; the ceiling/sky is just everything above the wall, while the floor is everything below the wall. The simplest way is to draw the ceiling/sky in the top half and the floor in the bottom half of the background:</p>
+				<pre><code>
+# Colors
+
+BACKGROUND_COLOR = (0, 0, 0)
+PLAYER_COLOR = (0, 255, 0)
+PLAYER_RAY_COLOR = (255, 0, 0)
+WALL_COLOR = (255, 255, 255)
+<b>SKY_COLOR = (0, 0, 255)
+FLOOR_COLOR = (255, 255, 0)</b>
+
+# The wall
+
+<i>(Snipped for brevity)</i>
+
+	screen.blit(split_screen, (SCREEN_WIDTH, 0))
+	
+	###########################################################################
+	# SCREEN 3
+	
+	# Clear screen
+
+	<b>pygame.draw.rect(split_screen, SKY_COLOR,
+		pygame.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT / 2))
+	pygame.draw.rect(split_screen, FLOOR_COLOR,
+		pygame.Rect(0, SCREEN_HEIGHT / 2, SCREEN_WIDTH, SCREEN_HEIGHT / 2))</b>
+
+	# If the wall is completely behind us, don't render it
+				</code></pre>
+				<p>Finally, wouldn't it be nice if there were borders between the three views? Just render it after all three views are rendered so it comes out on top:</p>
+				<pre><code>
+	# Blit screen onto window for a split-screen effect
+
+	screen.blit(split_screen, (SCREEN_WIDTH * 2, 0))
+
+	<b># Render split screen lines
+
+	pygame.draw.line(screen, (255, 255, 255),
+		(SCREEN_WIDTH, 0),
+		(SCREEN_WIDTH, SCREEN_HEIGHT), 2)
+	pygame.draw.line(screen, (255, 255, 255),
+		(SCREEN_WIDTH * 2, 0),
+		(SCREEN_WIDTH * 2, SCREEN_HEIGHT), 2)</b>
+
+	# Update screen
+
+	pygame.display.update()
+				</code></pre>
+				<p>And... cut! Here's our final product in action:</p>
+				<figure>
+					<a href="../doom3d-final.png"><img src="../doom3d-final.png" class="fitWidthImg" alt="Final product in action."></a>
+					<figcaption>Figure 13: The final product.</figcaption>
+				</figure>
+
+				<h2>Full Listing of the Program</h2>
+				<pre><code>
+import pygame
+import math
+
+# Converts math coordinates to screen coordinates
+
+def screen_coords(x, y):
+	return ((x / 2 + 0.5) * SCREEN_WIDTH, (-y / 2 + 0.5) * SCREEN_HEIGHT)
+
+# Converts degrees to radians
+
+def rad(degrees):
+	return degrees / 180 * math.pi
+
+# Screen and window dimensions
+
+SCREEN_WIDTH = 400 # For each screen
+SCREEN_HEIGHT = 400
+
+WIDTH = SCREEN_WIDTH * 3 # For the entire window (3 screens total, side-by-side)
+HEIGHT = SCREEN_HEIGHT
+
+# Colors
+
+BACKGROUND_COLOR = (0, 0, 0)
+PLAYER_COLOR = (0, 255, 0)
+PLAYER_RAY_COLOR = (255, 0, 0)
+WALL_COLOR = (255, 255, 255)
+SKY_COLOR = (0, 0, 255)
+FLOOR_COLOR = (255, 255, 0)
+
+# The wall
+
+WALL = ((-0.5, 0.5), (0.5, 0.5))
+WALL_HEIGHT = 0.25
+
+# Player speeds
+
+PLAYER_SPEED = 0.01 # Movement speed in math coordinates
+PLAYER_ROT_SPEED = 3 # Rotation speed in degrees
+
+# Player ray length
+
+PLAYER_RAY_LENGTH = 0.1
+
+# Player variables
+
+px = 0.0 # Player X
+py = 0.0 # Player Y
+prot = 0.0 # Player rotation
+
+# Initialize Pygame and create window
+
+pygame.init()
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+
+# Main loop
+
+running = True
+while running:
+	for event in pygame.event.get():
+		if event.type == pygame.QUIT:
+			running = False
+	
+	# Handle movement through user input
+
+	keys = pygame.key.get_pressed()
+
+	if keys[pygame.K_LEFT]:
+		prot -= PLAYER_ROT_SPEED
+	if keys[pygame.K_RIGHT]:
+		prot += PLAYER_ROT_SPEED
+	
+	if keys[pygame.K_UP]:
+		px += math.sin(rad(prot)) * PLAYER_SPEED
+		py += math.cos(rad(prot)) * PLAYER_SPEED
+	if keys[pygame.K_DOWN]:
+		px -= math.sin(rad(prot)) * PLAYER_SPEED
+		py -= math.cos(rad(prot)) * PLAYER_SPEED
+
+	# Prepare screen
+
+	split_screen = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+
+	###########################################################################
+	# SCREEN 1
+
+	# Clear screen
+
+	split_screen.fill(BACKGROUND_COLOR)
+	
+	# Draw wall
+	
+	pygame.draw.line(split_screen, WALL_COLOR,
+		screen_coords(WALL[0][0], WALL[0][1]),
+		screen_coords(WALL[1][0], WALL[1][1]), 1)
+
+	# Draw player
+
+	pygame.draw.line(split_screen, PLAYER_RAY_COLOR,
+		screen_coords(px, py),
+		screen_coords(
+			px + math.sin(rad(prot)) * PLAYER_RAY_LENGTH,
+			py + math.cos(rad(prot)) * PLAYER_RAY_LENGTH), 1)
+	pygame.draw.line(split_screen, PLAYER_COLOR,
+		screen_coords(px, py),
+		screen_coords(px, py), 1)
+	
+	# Blit screen onto window for a split-screen effect
+
+	screen.blit(split_screen, (0, 0))
+
+	###########################################################################
+	# SCREEN 2
+
+	# Clear screen
+
+	split_screen.fill(BACKGROUND_COLOR)
+
+	# Get real wall coordinates
+
+	x1 = WALL[0][0]
+	y1 = WALL[0][1]
+	x2 = WALL[1][0]
+	y2 = WALL[1][1]
+
+	# Calculate wall coordinates from player's perspective (POSITION)
+
+	px1 = x1 - px # Wall coordinate X - player coordinate X
+	py1 = y1 - py # Wall coordinate Y - player coordinate Y
+	px2 = x2 - px # Same for the other wall coordinates.
+	py2 = y2 - py
+
+	# Calculate wall coordinates from player's perspective (ROTATION)
+
+	rx1 = math.cos(rad(prot)) * px1 - math.sin(rad(prot)) * py1
+	ry1 = math.sin(rad(prot)) * px1 + math.cos(rad(prot)) * py1
+	rx2 = math.cos(rad(prot)) * px2 - math.sin(rad(prot)) * py2
+	ry2 = math.sin(rad(prot)) * px2 + math.cos(rad(prot)) * py2
+
+	# Draw wall
+
+	pygame.draw.line(split_screen, WALL_COLOR,
+		screen_coords(rx1, ry1),
+		screen_coords(rx2, ry2), 1)
+
+	# Draw player
+
+	pygame.draw.line(split_screen, PLAYER_RAY_COLOR,
+		screen_coords(0, 0),
+		screen_coords(0, PLAYER_RAY_LENGTH), 1)
+	pygame.draw.line(split_screen, PLAYER_COLOR,
+		screen_coords(0, 0),
+		screen_coords(0, 0), 1)
+
+	# Blit screen onto window for a split-screen effect
+
+	screen.blit(split_screen, (SCREEN_WIDTH, 0))
+	
+	###########################################################################
+	# SCREEN 3
+	
+	# Clear screen
+
+	pygame.draw.rect(split_screen, SKY_COLOR,
+		pygame.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT / 2))
+	pygame.draw.rect(split_screen, FLOOR_COLOR,
+		pygame.Rect(0, SCREEN_HEIGHT / 2, SCREEN_WIDTH, SCREEN_HEIGHT / 2))
+
+	# If the wall is completely behind us, don't render it
+
+	if ry1 > 0 or ry2 > 0:
+
+		# Clip wall that is partially behind us
+
+		if ry1 &lt;= 0 or ry2 &lt;= 0:
+			
+			# Calculate where the wall intersects the X axis
+
+			ix = (rx1 * ry2 - ry1 * rx2) / (ry2 - ry1)
+
+			# Change the coordinates of C into B (as per the math problem)
+			# so that the engine renders AB instead of AC, avoiding the problem
+
+			if ry1 &lt;= 0:
+				rx1 = ix
+				ry1 = 0.01
+			if ry2 &lt;= 0:
+				rx2 = ix
+				ry2 = 0.01
+
+		# Calculate 3-D wall coordinates as seen on the screen
+		
+		zx1 = rx1          / ry1
+		zu1 = WALL_HEIGHT  / ry1 # Upper Z coordinate
+		zl1 = -WALL_HEIGHT / ry1 # Lower Z coordinate
+		zx2 = rx2          / ry2
+		zu2 = WALL_HEIGHT  / ry2 # Upper Z coordinate
+		zl2 = -WALL_HEIGHT / ry2 # Lower Z coordinate
+
+		# Draw wall
+		
+		pygame.draw.polygon(split_screen, WALL_COLOR, [
+			screen_coords(zx1, zl1),
+			screen_coords(zx1, zu1),
+			screen_coords(zx2, zu2),
+			screen_coords(zx2, zl2)], 0)
+	
+	# Blit screen onto window for a split-screen effect
+
+	screen.blit(split_screen, (SCREEN_WIDTH * 2, 0))
+
+	# Render split screen lines
+
+	pygame.draw.line(screen, (255, 255, 255),
+		(SCREEN_WIDTH, 0),
+		(SCREEN_WIDTH, SCREEN_HEIGHT), 2)
+	pygame.draw.line(screen, (255, 255, 255),
+		(SCREEN_WIDTH * 2, 0),
+		(SCREEN_WIDTH * 2, SCREEN_HEIGHT), 2)
+
+	# Update screen
+
+	pygame.display.update()
+				</code></pre>
+
+				<h2>Exercises</h2>
+				<ul>
+					<li>Try making multiple walls instead of just one.</li>
+					<li>Try changing the player's height of vision.</li>
+					<li>Make your map non-convex. What happens?</li>
+					<li>Try making multiple wall colors.</li>
+					<li>Try adding strafing.</li>
+					<li>Using exercise #2, try adding head bobbing while walking.</li>
+					<li>Try re-implementing this engine in C or assembly.</li>
+				</ul>
+
+				<h2>Where to go from here</h2>
+				<p>The engine is far from complete. Most obviously, it's missing support for non-convex maps, and differing heights (such as staircases). You can find information on how to do that in the tutorial video by Bisqwit at the very start of this log.</p>
+				<p>It also doesn't have skybox, textures, lightmapping, shadows, objects, collision detection... lots of stuff can be implemented, but they're out of scope for this log. My fingers are getting tired, so... on to the conclusion!</p>
+
+				<h2>Conclusion</h2>
+				<p>Hope you liked this tutorial! You can download my version of the engine <a href="../projects/doom3d.html">here</a>. If you discover an error, have a review, or just want to show off anything you have hacked int- I mean, added into the engine, do shoot me an email at limdingwen (at) gmail (dot) com!</p>
+				<p>Good night. &spades;</p>
+
+				<p>Ignis Incendio<br>
+				2016-11-23</p>
+			</article>
+		</div>
+	</body>
+</html>
